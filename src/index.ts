@@ -4,7 +4,7 @@ import {
   DEFAULT_PROTECTED_PATHS,
   matchPattern,
   checkPathProtection,
-  expandHome,
+  checkShellPathViolation,
 } from "./patterns.js"
 
 interface PendingAsk {
@@ -57,6 +57,7 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         const command = args.command as string
         if (!command) return
 
+        // 1. Check dangerous command patterns
         const result = matchPattern(command, DEFAULT_PATTERNS)
         if (result) {
           const { match, pattern } = result
@@ -93,27 +94,33 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
           return // proceed to permission system
         }
 
-        // Check protected paths in shell commands
-        for (const prot of DEFAULT_PROTECTED_PATHS) {
-          const expandedPath = expandHome(prot.path)
-          if (command.includes(expandedPath) || command.includes(prot.path)) {
-            await client.app.log({
-              body: {
-                service: 'damage-control',
-                level: 'warn',
-                message: 'Blocked access to protected path in command',
-                extra: { command: command.slice(0, 100), path: prot.path },
-              },
-            })
-            throw new Error(
-              `DAMAGE_CONTROL_BLOCKED: Protected path "${prot.path}" cannot be accessed\n` +
-              `Protection level: ${prot.level}`
-            )
-          }
+        // 2. Check three-tier path protection for shell commands
+        //    zeroAccess: block if path appears in command at all
+        //    readOnly:   block only writes/deletes (cat ~/.bashrc is fine)
+        //    noDelete:   block only deletes (echo >> .gitignore is fine)
+        const violation = checkShellPathViolation(command, DEFAULT_PROTECTED_PATHS)
+        if (violation) {
+          const { protectedPath: prot, operation } = violation
+          const verb = operation === 'access' ? 'access'
+            : operation === 'write' ? 'write to'
+            : 'delete'
+          await client.app.log({
+            body: {
+              service: 'damage-control',
+              level: 'warn',
+              message: `Blocked ${operation} on protected path in command`,
+              extra: { command: command.slice(0, 100), path: prot.path, level: prot.level },
+            },
+          })
+          throw new Error(
+            `DAMAGE_CONTROL_BLOCKED: Cannot ${verb} protected path "${prot.path}"\n` +
+            `Protection level: ${prot.level}`
+          )
         }
       }
 
       // -- Read operations --
+      // Only zeroAccess paths block reads. readOnly and noDelete allow reading.
       if (tool === 'read' || tool === 'glob' || tool === 'grep') {
         const filePath = args.filePath as string
         if (!filePath) return
@@ -134,8 +141,32 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         }
       }
 
-      // -- Write operations --
+      // -- Write/edit operations --
+      // zeroAccess and readOnly block writes. noDelete allows writes.
       if (tool === 'edit' || tool === 'write' || tool === 'create') {
+        const filePath = args.filePath as string
+        if (!filePath) return
+
+        const prot = checkPathProtection(filePath, DEFAULT_PROTECTED_PATHS)
+        if (prot && (prot.level === 'zeroAccess' || prot.level === 'readOnly')) {
+          await client.app.log({
+            body: {
+              service: 'damage-control',
+              level: 'warn',
+              message: `Blocked ${tool} on protected path`,
+              extra: { filePath, path: prot.path, level: prot.level },
+            },
+          })
+          throw new Error(
+            `DAMAGE_CONTROL_BLOCKED: Cannot ${tool} protected path "${prot.path}"\n` +
+            `Protection level: ${prot.level}`
+          )
+        }
+      }
+
+      // -- Delete operations --
+      // All three levels block deletes.
+      if (tool === 'delete' || tool === 'remove') {
         const filePath = args.filePath as string
         if (!filePath) return
 

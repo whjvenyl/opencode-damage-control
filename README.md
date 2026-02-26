@@ -18,11 +18,11 @@ AI coding agents have shell access, file read/write, and broad autonomy. A singl
 
 This plugin intercepts every tool call and either **blocks** or **asks for confirmation** before dangerous ones run.
 
+**108 command patterns** (46 block, 62 ask) and **103 protected paths** across three protection levels.
+
 ---
 
 ## How It Works
-
-The plugin uses two hooks working together:
 
 ```
          OpenCode Tool Call
@@ -39,24 +39,24 @@ The plugin uses two hooks working together:
  | + Path   | | Check | | Check |
  | Check    | +---+---+ +---+---+
  +----+-----+     |           |
-      |        zeroAccess? protected?
-      |          / \         / \
-  action?      yes  no     yes  no
-  /    \        |    |      |    |
-block  ask   BLOCK ALLOW BLOCK ALLOW
+      |      zeroAccess?  zeroAccess
+      |        / \        +readOnly?
+  action?     yes  no       / \
+  /    \       |    |      yes  no
+block  ask  BLOCK ALLOW  BLOCK ALLOW
  |      |
  v      v
-THROW  STASH ──> permission.ask ──> CONFIRM DIALOG
+THROW  STASH --> permission.ask --> CONFIRM DIALOG
 ```
 
 ### Two-Hook Architecture
 
 **Hook 1: `tool.execute.before`** -- inspects every tool call with full access to arguments.
 
-- **Shell commands** (`bash`, `shell`, `cmd`) are matched against 70+ dangerous patterns. Matches with `action: 'block'` throw immediately. Matches with `action: 'ask'` are stashed and allowed to proceed to the permission system.
-- **Read operations** (`read`, `glob`, `grep`) are checked against protected paths. `zeroAccess` paths are hard-blocked.
-- **Write operations** (`edit`, `write`, `create`) are checked against all protected paths. Any match is hard-blocked.
-- Shell commands referencing protected paths are hard-blocked.
+- **Shell commands** (`bash`, `shell`, `cmd`) are matched against 108 dangerous patterns. Matches with `action: 'block'` throw immediately. Matches with `action: 'ask'` are stashed and proceed to the permission system. Shell commands referencing protected paths are also checked, with enforcement varying by protection level.
+- **Read operations** (`read`, `glob`, `grep`) are checked against protected paths. Only `zeroAccess` paths are hard-blocked (secrets should never be read).
+- **Write/edit operations** (`edit`, `write`, `create`) are checked against `zeroAccess` and `readOnly` paths.
+- **Delete operations** are checked against all protection levels.
 
 **Hook 2: `permission.ask`** -- fires when OpenCode's permission system is consulted.
 
@@ -115,6 +115,7 @@ These are hard-blocked. The tool never executes.
 | `mkfs.*` | Format filesystem |
 | `kill -9 -1` | Kill all processes |
 | `killall -9` | Kill all processes |
+| `pkill -9` | pkill with SIGKILL |
 | `shutdown` / `reboot` / `init 0` | System shutdown/reboot/halt |
 | `format c:` | Windows format |
 | `sudo rm` | sudo rm |
@@ -126,6 +127,7 @@ These are hard-blocked. The tool never executes.
 | `DROP TABLE` | SQL DROP TABLE |
 | `DROP DATABASE` | SQL DROP DATABASE |
 | `DELETE FROM ... ;` | DELETE without WHERE clause |
+| `DELETE * FROM` | DELETE * (will delete ALL rows) |
 | `TRUNCATE TABLE` | SQL TRUNCATE TABLE |
 
 ### Git (irreversible)
@@ -136,6 +138,23 @@ These are hard-blocked. The tool never executes.
 | `git push -f` | Force push shorthand |
 | `git stash clear` | Deletes ALL stashes |
 | `git filter-branch` | Rewrites entire history |
+| `git reflog expire` | Destroys recovery mechanism |
+| `git gc --prune=now` | Can lose dangling commits |
+
+### Shell
+
+| Pattern | Description |
+|---------|-------------|
+| `curl ... \| sh` | Pipe to shell |
+| `wget ... \| sh` | Pipe to shell |
+
+### Docker / Containers
+
+| Pattern | Description |
+|---------|-------------|
+| `docker rm -f $(docker ps)` | Force removes all running containers |
+| `kubectl delete all --all` | Deletes all K8s resources |
+| `kubectl delete --all --all-namespaces` | Deletes across all namespaces |
 
 ### Infrastructure
 
@@ -146,7 +165,8 @@ These are hard-blocked. The tool never executes.
 | `aws s3 rm --recursive` | Deletes all S3 objects |
 | `aws s3 rb --force` | Force removes S3 bucket |
 | `gcloud projects delete` | Deletes entire GCP project |
-| `kubectl delete all --all` | Deletes all K8s resources |
+| `firebase projects:delete` | Deletes Firebase project |
+| `firebase firestore:delete --all-collections` | Wipes all Firestore data |
 
 ### Databases / Services
 
@@ -156,15 +176,9 @@ These are hard-blocked. The tool never executes.
 | `dropdb` | PostgreSQL drop database |
 | `mysqladmin drop` | MySQL drop database |
 | `mongosh ... dropDatabase` | MongoDB drop database |
+| `mongo ... dropDatabase` | MongoDB drop database (legacy shell) |
 | `npm unpublish` | Removes package from registry |
 | `gh repo delete` | Deletes GitHub repository |
-
-### Shell
-
-| Pattern | Description |
-|---------|-------------|
-| `curl ... \| sh` | Pipe to shell |
-| `wget ... \| sh` | Pipe to shell |
 
 ---
 
@@ -176,7 +190,9 @@ These prompt the user for confirmation. The user can approve once, approve alway
 
 | Pattern | Description |
 |---------|-------------|
-| `rm -rf` / `rm -f` / `rm --force` | rm with recursive or force flags |
+| `rm -rf` / `rm -f` / `rm -R` | rm with recursive or force flags |
+| `rm --recursive` / `rm --force` | rm with long flag variants |
+| `rmdir --ignore-fail-on-non-empty` | rmdir ignore-fail |
 
 ### Git (recoverable but risky)
 
@@ -189,6 +205,7 @@ These prompt the user for confirmation. The user can approve once, approve alway
 | `git stash drop` | Permanently delete a stash |
 | `git branch -D` | Force delete branch (even if unmerged) |
 | `git push --delete` | Delete remote branch |
+| `git push origin :branch` | Delete remote branch (refspec syntax) |
 
 ### SQL (targeted)
 
@@ -210,26 +227,52 @@ These prompt the user for confirmation. The user can approve once, approve alway
 | `aws ec2 terminate-instances` | Terminate EC2 instances |
 | `aws rds delete-db-instance` | Delete RDS instance |
 | `aws cloudformation delete-stack` | Delete CloudFormation stack |
+| `aws dynamodb delete-table` | Delete DynamoDB table |
+| `aws eks delete-cluster` | Delete EKS cluster |
+| `aws lambda delete-function` | Delete Lambda function |
+| `aws iam delete-role` / `delete-user` | Delete IAM role or user |
 | `gcloud compute instances delete` | Delete GCE instances |
 | `gcloud sql instances delete` | Delete Cloud SQL instances |
 | `gcloud container clusters delete` | Delete GKE clusters |
+| `gcloud storage rm -r` | Recursive cloud storage delete |
+| `gcloud functions delete` | Delete Cloud Function |
+| `gcloud iam service-accounts delete` | Delete service account |
+
+### Docker / Kubernetes
+
+| Pattern | Description |
+|---------|-------------|
 | `docker system prune -a` | Remove all unused Docker data |
-| `docker volume prune` | Remove unused Docker volumes |
+| `docker rmi -f` | Force remove Docker images |
+| `docker volume rm` / `docker volume prune` | Remove Docker volumes |
 | `kubectl delete namespace` | Delete K8s namespace |
 | `helm uninstall` | Uninstall Helm release |
+
+### Databases
+
+| Pattern | Description |
+|---------|-------------|
 | `redis-cli FLUSHDB` | Wipe Redis database |
+| `firebase database:remove` | Remove Firebase Realtime Database data |
 
 ### Hosting / Deployment
 
 | Pattern | Description |
 |---------|-------------|
-| `vercel remove --yes` | Remove Vercel deployment |
-| `vercel projects rm` | Delete Vercel project |
-| `netlify sites:delete` | Delete Netlify site |
-| `heroku apps:destroy` | Destroy Heroku app |
-| `heroku pg:reset` | Reset Heroku Postgres |
-| `fly apps destroy` | Destroy Fly.io app |
+| `vercel remove --yes` / `vercel projects rm` | Remove Vercel deployment or project |
+| `vercel env rm --yes` | Remove Vercel environment variable |
+| `netlify sites:delete` / `netlify functions:delete` | Delete Netlify site or function |
+| `heroku apps:destroy` / `heroku pg:reset` | Destroy Heroku app or reset Postgres |
+| `fly apps destroy` / `fly destroy` | Destroy Fly.io app |
 | `wrangler delete` | Delete Cloudflare Worker |
+| `wrangler r2 bucket delete` | Delete R2 bucket |
+| `wrangler kv:namespace delete` | Delete KV namespace |
+| `wrangler d1 delete` / `wrangler queues delete` | Delete D1 database or Queue |
+| `firebase hosting:disable` / `firebase functions:delete` | Disable Firebase hosting or delete function |
+| `serverless remove` / `sls remove` | Remove Serverless Framework stack |
+| `sam delete` | Delete SAM application |
+| `doctl compute droplet delete` / `doctl databases delete` | Delete DigitalOcean resources |
+| `supabase db reset` | Reset Supabase database |
 
 ### Other
 
@@ -241,7 +284,21 @@ These prompt the user for confirmation. The user can approve once, approve alway
 
 ## Protected Paths
 
-These paths are hard-blocked for all tool types. Shell commands, reads, and writes referencing them are prevented.
+Paths are organized into three protection levels. Enforcement varies by tool type and operation.
+
+### Protection Matrix
+
+| Level | Read | Write/Edit | Delete | Shell |
+|-------|------|------------|--------|-------|
+| **zeroAccess** | Block | Block | Block | Block if path referenced |
+| **readOnly** | Allow | Block | Block | Block if writing or deleting |
+| **noDelete** | Allow | Allow | Block | Block if deleting |
+
+Shell commands are analyzed for write operators (`>`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `chmod`, `touch`, `mkdir`, etc.) and delete operators (`rm`, `unlink`, `rmdir`, `shred`) to determine the actual operation being performed.
+
+### zeroAccess (36 paths)
+
+Secrets and credentials. No tool can read, write, or delete these.
 
 | Path | What It Protects |
 |------|------------------|
@@ -252,14 +309,55 @@ These paths are hard-blocked for all tool types. Shell commands, reads, and writ
 | `~/.azure` | Azure credentials |
 | `~/.kube` | Kubernetes config |
 | `~/.docker` | Docker config |
-| `/etc/passwd` | System user database |
-| `/etc/shadow` | System password hashes |
+| `/etc/passwd` / `/etc/shadow` | System user database and password hashes |
 | `~/.config/opencode` | OpenCode config (prevents self-modification) |
-| `~/.netrc` | Network credentials |
-| `~/.npmrc` | npm auth tokens |
-| `~/.git-credentials` | Git credentials |
+| `~/.netrc` / `~/.npmrc` / `~/.pypirc` | Network and registry credentials |
+| `~/.git-credentials` / `.git-credentials` | Git credentials |
+| `.env*` | Environment variable files (glob) |
+| `*.pem` / `*.key` / `*.p12` / `*.pfx` | Cryptographic keys and certificates |
+| `*.tfstate*` / `.terraform/` | Terraform state |
+| `*-credentials.json` | Cloud credential files |
+| `*serviceAccount*.json` / `*service-account*.json` | Service account keys |
+| `serviceAccountKey.json` | Firebase/GCP service account key |
+| `kubeconfig` | Kubernetes config file |
+| `*-secret.yaml` / `secrets.yaml` | Kubernetes/app secrets |
+| `.vercel/` / `.netlify/` / `.supabase/` | Deployment platform configs |
+| `firebase-adminsdk*.json` | Firebase admin SDK key |
+| `dump.sql` / `backup.sql` / `*.dump` | Database dumps |
 
-`~` is expanded to `$HOME` at runtime. Both forms are checked.
+### readOnly (43 paths)
+
+System directories, shell configs, lock files, and build artifacts. Tools can read but not modify.
+
+| Path | What It Protects |
+|------|------------------|
+| `/etc/` / `/usr/` / `/bin/` / `/sbin/` / `/boot/` / `/root/` | System directories |
+| `~/.bash_history` / `~/.zsh_history` / `~/.node_repl_history` | Shell history |
+| `~/.bashrc` / `~/.zshrc` / `~/.profile` / `~/.bash_profile` | Shell configs |
+| `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` | JS lock files |
+| `Gemfile.lock` / `Cargo.lock` / `poetry.lock` / `composer.lock` | Other lock files |
+| `go.sum` / `Pipfile.lock` / `flake.lock` / `bun.lockb` / `uv.lock` | More lock files |
+| `npm-shrinkwrap.json` / `*.lock` / `*.lockb` | Generic lock files |
+| `*.min.js` / `*.min.css` / `*.bundle.js` / `*.chunk.js` | Minified/bundled output |
+| `dist/` / `build/` / `out/` / `.next/` / `.nuxt/` / `.output/` | Build output directories |
+| `node_modules/` / `__pycache__/` / `.venv/` / `venv/` / `target/` | Dependency/build directories |
+
+### noDelete (24 paths)
+
+Project infrastructure. Tools can read and edit but not delete.
+
+| Path | What It Protects |
+|------|------------------|
+| `~/.claude/` / `CLAUDE.md` | Claude Code config |
+| `LICENSE*` / `COPYING*` / `NOTICE` / `PATENTS` | License files |
+| `README*` / `CONTRIBUTING.md` / `CHANGELOG.md` | Project docs |
+| `CODE_OF_CONDUCT.md` / `SECURITY.md` | Community docs |
+| `.git/` / `.gitignore` / `.gitattributes` / `.gitmodules` | Git infrastructure |
+| `.github/` / `.gitlab-ci.yml` / `.circleci/` | CI/CD configs |
+| `Jenkinsfile` / `.travis.yml` / `azure-pipelines.yml` | CI/CD configs |
+| `Dockerfile*` / `docker-compose*.yml` / `.dockerignore` | Container configs |
+
+`~` is expanded to `$HOME` at runtime. Glob patterns (`*`) match against the file basename. Non-glob patterns use prefix/substring matching.
 
 ---
 
@@ -296,6 +394,7 @@ damage-control flagged: git reset --hard
 - **Patterns are hardcoded.** No runtime configuration. Fork the repo to customize.
 - **Substring matching for paths.** A command that merely _mentions_ a protected path (e.g., in a comment) will be blocked.
 - **Shell only, not subprocesses.** The plugin inspects command strings passed to the `bash`/`shell`/`cmd` tool. It cannot inspect commands spawned by scripts.
+- **Pattern ordering matters.** When a command matches multiple patterns, the first match wins. Specific patterns (e.g., `docker rm`, `gcloud storage rm`) are ordered before generic ones (e.g., `rm -rf`) to ensure the right action and reason are applied.
 - **Ask requires permission system.** The confirmation dialog for `ask` patterns relies on OpenCode's permission system being active. If a user's config has `bash: "allow"`, the `permission.ask` hook forces the dialog anyway -- but the exact UX depends on the OpenCode version.
 
 ---
@@ -305,7 +404,7 @@ damage-control flagged: git reset --hard
 ```bash
 npm install
 npm run build    # output in dist/
-npm test         # run tests
+npm test         # run 326 tests
 ```
 
 [`src/index.ts`](src/index.ts) exports `DamageControl` as a named export conforming to the OpenCode `Plugin` type. Patterns, protected paths, and helpers live in [`src/patterns.ts`](src/patterns.ts).
@@ -315,11 +414,15 @@ npm test         # run tests
 ```
 src/patterns.ts
   |
-  +-- DEFAULT_PATTERNS[]           70+ patterns with action (block | ask)
-  +-- DEFAULT_PROTECTED_PATHS[]    13 sensitive paths
-  +-- matchPattern()               regex matching against pattern list
-  +-- checkPathProtection()        path substring matching
+  +-- DEFAULT_PATTERNS[]           108 patterns with action (block | ask)
+  +-- DEFAULT_PROTECTED_PATHS[]    103 paths across 3 protection levels
+  +-- matchPattern()               first-match regex against pattern list
+  +-- checkPathProtection()        glob + prefix/substring path matching
+  +-- checkShellPathViolation()    shell command operation detection
+  +-- isShellWrite()               detects write operators (17 patterns)
+  +-- isShellDelete()              detects delete operators (4 patterns)
   +-- expandHome()                 ~ -> $HOME expansion
+  +-- globToRegex()                zero-dependency glob-to-regex conversion
 
 src/index.ts
   |
@@ -335,7 +438,7 @@ opencode-damage-control/
   src/
     index.ts              # Plugin entry point
     patterns.ts           # Patterns, paths, and helpers
-    patterns.test.ts      # Tests (node:test)
+    patterns.test.ts      # 326 tests (node:test)
   dist/                   # Compiled output (generated by tsc)
   package.json
   tsconfig.json
