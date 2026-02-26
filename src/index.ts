@@ -6,6 +6,7 @@ import {
   checkPathProtection,
   checkShellPathViolation,
 } from "./patterns.js"
+import { loadConfig, applyConfig } from "./config.js"
 
 interface PendingAsk {
   reason: string
@@ -18,14 +19,37 @@ interface PendingAsk {
 // ---------------------------------------------------------------------------
 
 export const DamageControl: Plugin = async ({ client, directory }) => {
+  // Load and apply custom configuration
+  const { config, warnings } = loadConfig(directory)
+  const { patterns, paths } = applyConfig(config, DEFAULT_PATTERNS, DEFAULT_PROTECTED_PATHS)
+
+  const hasCustomConfig =
+    config.patterns !== undefined || config.paths !== undefined
+
   await client.app.log({
     body: {
       service: 'damage-control',
       level: 'info',
       message: 'Plugin initialized',
-      extra: { directory },
+      extra: {
+        directory,
+        customConfig: hasCustomConfig,
+        patterns: patterns.length,
+        paths: paths.length,
+      },
     },
   })
+
+  // Log any config validation warnings
+  for (const warning of warnings) {
+    await client.app.log({
+      body: {
+        service: 'damage-control',
+        level: 'warn',
+        message: warning,
+      },
+    })
+  }
 
   // Pending asks keyed by callID -- set in tool.execute.before,
   // consumed in permission.ask to force the confirmation dialog.
@@ -58,7 +82,7 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         if (!command) return
 
         // 1. Check dangerous command patterns
-        const result = matchPattern(command, DEFAULT_PATTERNS)
+        const result = matchPattern(command, patterns)
         if (result) {
           const { match, pattern } = result
 
@@ -98,7 +122,7 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         //    zeroAccess: block if path appears in command at all
         //    readOnly:   block only writes/deletes (cat ~/.bashrc is fine)
         //    noDelete:   block only deletes (echo >> .gitignore is fine)
-        const violation = checkShellPathViolation(command, DEFAULT_PROTECTED_PATHS)
+        const violation = checkShellPathViolation(command, paths)
         if (violation) {
           const { protectedPath: prot, operation } = violation
           const verb = operation === 'access' ? 'access'
@@ -125,7 +149,7 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         const filePath = args.filePath as string
         if (!filePath) return
 
-        const prot = checkPathProtection(filePath, DEFAULT_PROTECTED_PATHS)
+        const prot = checkPathProtection(filePath, paths)
         if (prot && prot.level === 'zeroAccess') {
           await client.app.log({
             body: {
@@ -147,7 +171,7 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         const filePath = args.filePath as string
         if (!filePath) return
 
-        const prot = checkPathProtection(filePath, DEFAULT_PROTECTED_PATHS)
+        const prot = checkPathProtection(filePath, paths)
         if (prot && (prot.level === 'zeroAccess' || prot.level === 'readOnly')) {
           await client.app.log({
             body: {
@@ -170,7 +194,7 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         const filePath = args.filePath as string
         if (!filePath) return
 
-        const prot = checkPathProtection(filePath, DEFAULT_PROTECTED_PATHS)
+        const prot = checkPathProtection(filePath, paths)
         if (prot) {
           await client.app.log({
             body: {

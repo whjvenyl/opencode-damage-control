@@ -389,9 +389,117 @@ damage-control flagged: git reset --hard
 
 ---
 
+## Configuration
+
+All 108 patterns and 103 protected paths work out of the box with zero configuration. To customize, create a `damage-control.json` file in either or both locations:
+
+| Location | Scope |
+|----------|-------|
+| `~/.config/opencode/damage-control.json` | Global (all projects) |
+| `.opencode/damage-control.json` | Project (this repo only) |
+
+Both are optional. When both exist, project config merges on top of global. Invalid config logs warnings and falls back to defaults -- the plugin never crashes on bad config.
+
+### Schema
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/whjvenyl/opencode-damage-control/main/schema.json",
+  "patterns": {
+    "add": [
+      { "pattern": "my-dangerous-cmd", "reason": "Custom dangerous command", "action": "block" }
+    ],
+    "remove": ["SQL DROP TABLE"],
+    "override": {
+      "Recursive delete from root": "ask"
+    }
+  },
+  "paths": {
+    "add": [
+      { "path": "~/.my-secrets", "level": "zeroAccess" }
+    ],
+    "remove": ["~/.npmrc"],
+    "override": {
+      "/etc/hosts": "noDelete",
+      "~/.docker": "none"
+    }
+  }
+}
+```
+
+### Config operations
+
+| Operation | Key | What it does |
+|-----------|-----|-------------|
+| **Add** | `patterns.add` / `paths.add` | Append new entries after defaults |
+| **Remove** | `patterns.remove` / `paths.remove` | Remove by exact `reason` (patterns) or `path` (paths) string |
+| **Override** | `patterns.override` / `paths.override` | Change `action` or `level` of existing entries. Use `"none"` in paths to unprotect. |
+
+### Processing order
+
+1. Start with built-in defaults
+2. **Remove** matching entries
+3. **Override** remaining entries
+4. **Add** new entries at the end
+
+### Merge semantics (global + project)
+
+| Field | Merge strategy |
+|-------|----------------|
+| `add` arrays | Concatenate (global first, then project) |
+| `remove` arrays | Union (both lists apply) |
+| `override` objects | Shallow merge (project wins on conflict) |
+
+### Examples
+
+**Relax a block to ask** -- allow `terraform destroy` with confirmation instead of hard-blocking:
+
+```json
+{
+  "patterns": {
+    "override": { "Terraform destroy": "ask" }
+  }
+}
+```
+
+**Add a custom pattern** -- block a company-specific dangerous CLI:
+
+```json
+{
+  "patterns": {
+    "add": [
+      { "pattern": "prod-db-wipe", "reason": "Wipes production database", "action": "block" }
+    ]
+  }
+}
+```
+
+**Unprotect a path** -- allow writes to `.npmrc`:
+
+```json
+{
+  "paths": {
+    "override": { "~/.npmrc": "none" }
+  }
+}
+```
+
+**Protect additional paths** -- add company secrets directory:
+
+```json
+{
+  "paths": {
+    "add": [
+      { "path": "~/.company-secrets", "level": "zeroAccess" }
+    ]
+  }
+}
+```
+
+---
+
 ## Limitations
 
-- **Patterns are hardcoded.** No runtime configuration. Fork the repo to customize.
 - **Substring matching for paths.** A command that merely _mentions_ a protected path (e.g., in a comment) will be blocked.
 - **Shell only, not subprocesses.** The plugin inspects command strings passed to the `bash`/`shell`/`cmd` tool. It cannot inspect commands spawned by scripts.
 - **Pattern ordering matters.** When a command matches multiple patterns, the first match wins. Specific patterns (e.g., `docker rm`, `gcloud storage rm`) are ordered before generic ones (e.g., `rm -rf`) to ensure the right action and reason are applied.
@@ -404,10 +512,10 @@ damage-control flagged: git reset --hard
 ```bash
 npm install
 npm run build    # output in dist/
-npm test         # run 326 tests
+npm test         # run 352 tests
 ```
 
-[`src/index.ts`](src/index.ts) exports `DamageControl` as a named export conforming to the OpenCode `Plugin` type. Patterns, protected paths, and helpers live in [`src/patterns.ts`](src/patterns.ts).
+[`src/index.ts`](src/index.ts) exports `DamageControl` as a named export conforming to the OpenCode `Plugin` type. Patterns, protected paths, and helpers live in [`src/patterns.ts`](src/patterns.ts). Configuration loading and merging live in [`src/config.ts`](src/config.ts).
 
 ### Architecture
 
@@ -424,11 +532,18 @@ src/patterns.ts
   +-- expandHome()                 ~ -> $HOME expansion
   +-- globToRegex()                zero-dependency glob-to-regex conversion
 
+src/config.ts
+  |
+  +-- loadConfig()                 reads global + project JSON, validates, merges
+  +-- applyConfig()               pure function: remove -> override -> add
+  +-- DamageControlConfig          config type (patterns + paths sections)
+
 src/index.ts
   |
   +-- DamageControl                Plugin function returning two hooks:
-       +-- tool.execute.before     inspect + block or stash
-       +-- permission.ask          force confirmation for stashed items
+       +-- loadConfig + applyConfig   at init, customizes defaults
+       +-- tool.execute.before        inspect + block or stash
+       +-- permission.ask             force confirmation for stashed items
 ```
 
 ### Project Structure
@@ -437,8 +552,10 @@ src/index.ts
 opencode-damage-control/
   src/
     index.ts              # Plugin entry point
+    config.ts             # Config loading, validation, and merging
     patterns.ts           # Patterns, paths, and helpers
-    patterns.test.ts      # 326 tests (node:test)
+    config.test.ts        # 26 config tests (node:test)
+    patterns.test.ts      # 326 pattern tests (node:test)
   dist/                   # Compiled output (generated by tsc)
   package.json
   tsconfig.json
