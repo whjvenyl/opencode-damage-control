@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "test": "tsx --test src/**/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@opencode-ai/plugin": "^1.2.14",
     "@types/node": "^25.3.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.0"
   }
 }
