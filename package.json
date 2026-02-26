@@ -1,0 +1,37 @@
+{
+  "name": "opencode-damage-control",
+  "version": "1.0.0",
+  "description": "OpenCode plugin that blocks dangerous commands and protects sensitive paths",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "security",
+    "damage-control",
+    "guardrails"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.2.14",
+    "@types/node": "^25.3.1",
+    "typescript": "^5.8.0"
+  }
+}
