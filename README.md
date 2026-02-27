@@ -71,29 +71,38 @@ Three-tier protection system for sensitive files:
 
 ## How It Works
 
-```
-         OpenCode Tool Call
-                |
-    +-----------+-----------+
-    |           |           |
-  bash/       read/       edit/
-  shell/      glob/       write/
-  cmd         grep        create
-    |           |           |
-    v           v           v
- +----------+ +-------+ +-------+
- | Pattern  | | Path  | | Path  |
- | + Path   | | Check | | Check |
- | Check    | +---+---+ +---+---+
- +----+-----+     |           |
-      |      zeroAccess?  zeroAccess
-      |        / \        +readOnly?
-  action?     yes  no       / \
-  /    \       |    |      yes  no
-block  ask  BLOCK ALLOW  BLOCK ALLOW
- |      |
- v      v
-THROW  STASH --> permission.ask --> CONFIRM DIALOG
+```mermaid
+flowchart TD
+    CALL["OpenCode Tool Call"]
+
+    CALL --> EXEC["bash / shell / cmd"]
+    CALL --> READ["read / glob / grep"]
+    CALL --> WRITE["edit / write / create"]
+
+    EXEC --> PP["Pattern + Path Check"]
+    READ --> PC1["Path Check"]
+    WRITE --> PC2["Path Check"]
+
+    PP --> |block| THROW["THROW (hard block)"]
+    PP --> |ask| STASH["STASH by callID"]
+    PP --> |no match| ALLOW1["ALLOW"]
+
+    PC1 --> |zeroAccess| BLOCK1["BLOCK"]
+    PC1 --> |otherwise| ALLOW2["ALLOW"]
+
+    PC2 --> |zeroAccess / readOnly| BLOCK2["BLOCK"]
+    PC2 --> |otherwise| ALLOW3["ALLOW"]
+
+    STASH --> PERM["permission.ask hook"]
+    PERM --> DIALOG["CONFIRM DIALOG"]
+
+    style THROW fill:#dc2626,color:#fff,stroke:#991b1b
+    style BLOCK1 fill:#dc2626,color:#fff,stroke:#991b1b
+    style BLOCK2 fill:#dc2626,color:#fff,stroke:#991b1b
+    style DIALOG fill:#f59e0b,color:#000,stroke:#d97706
+    style ALLOW1 fill:#16a34a,color:#fff,stroke:#15803d
+    style ALLOW2 fill:#16a34a,color:#fff,stroke:#15803d
+    style ALLOW3 fill:#16a34a,color:#fff,stroke:#15803d
 ```
 
 **Hook 1: `tool.execute.before`** -- inspects every tool call. Matches with `block` throw immediately. Matches with `ask` are stashed by `callID` and proceed to the permission system. Protected paths are enforced based on their tier and the operation type.
