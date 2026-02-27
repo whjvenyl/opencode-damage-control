@@ -7,6 +7,7 @@ Defense-in-depth security plugin for [OpenCode](https://opencode.ai). Blocks dan
 [![License: MIT](https://img.shields.io/badge/License-MIT-dc2626)](LICENSE)
 [![Built with OpenCode](https://img.shields.io/badge/Built_with-OpenCode-dc2626)](https://opencode.ai)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-dc2626)](package.json)
+[![Socket Badge](https://badge.socket.dev/npm/package/opencode-damage-control/1.3.0)](https://badge.socket.dev/npm/package/opencode-damage-control/1.3.0)
 
 ---
 
