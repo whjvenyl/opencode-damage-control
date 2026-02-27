@@ -4,6 +4,15 @@
 	"description": "OpenCode plugin that blocks dangerous commands and protects sensitive paths",
 	"type": "module",
 	"license": "MIT",
+	"author": "whjvenyl",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/whjvenyl/opencode-damage-control.git"
+	},
+	"homepage": "https://github.com/whjvenyl/opencode-damage-control#readme",
+	"bugs": {
+		"url": "https://github.com/whjvenyl/opencode-damage-control/issues"
+	},
 	"keywords": [
 		"opencode",
 		"opencode-plugin",

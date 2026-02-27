@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    if: github.repository == 'whjvenyl/opencode-damage-control'
+    runs-on: ubuntu-latest
+    environment: Release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Get release notes from draft
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch the latest draft release body
+          BODY=$(gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.draft == true)] | first | .body // ""')
+
+          # Write to file for the next step
+          echo "$BODY" > RELEASE_NOTES.md
+
+          # Also get the draft release ID so we can delete it after
+          DRAFT_ID=$(gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.draft == true)] | first | .id // empty')
+          echo "draft_id=$DRAFT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file RELEASE_NOTES.md
+
+      - name: Delete draft release
+        if: steps.notes.outputs.draft_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X DELETE repos/${{ github.repository }}/releases/${{ steps.notes.outputs.draft_id }}
+
+  mark_released:
+    needs: release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Switch "pending release" to "released"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for PR in $(gh pr list \
+                --state merged \
+                --label "pending release" \
+                --json number \
+                --jq '.[].number'); do
+            echo "Updating PR #$PR"
+            gh pr edit "$PR" \
+              --add-label "released" \
+              --remove-label "pending release"
+          done

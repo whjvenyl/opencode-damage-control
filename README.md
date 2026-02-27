@@ -2,12 +2,12 @@
 
 Defense-in-depth security plugin for [OpenCode](https://opencode.ai). Blocks dangerous commands and protects sensitive files before they execute.
 
+[![CI](https://github.com/whjvenyl/opencode-damage-control/actions/workflows/ci.yml/badge.svg)](https://github.com/whjvenyl/opencode-damage-control/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/opencode-damage-control?color=dc2626)](https://npmjs.com/package/opencode-damage-control)
 [![npm downloads](https://img.shields.io/npm/dm/opencode-damage-control?color=dc2626)](https://npmjs.com/package/opencode-damage-control)
 [![License: MIT](https://img.shields.io/badge/License-MIT-dc2626)](LICENSE)
 [![Built with OpenCode](https://img.shields.io/badge/Built_with-OpenCode-dc2626)](https://opencode.ai)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-dc2626)](package.json)
-[![Socket Badge](https://badge.socket.dev/npm/package/opencode-damage-control/1.3.0)](https://badge.socket.dev/npm/package/opencode-damage-control/1.3.0)
 
 ---
 
@@ -235,6 +235,14 @@ src/
 | [`patterns.ts`](src/patterns.ts) | `DEFAULT_PATTERNS`, `DEFAULT_PROTECTED_PATHS`, `matchPattern()`, `checkPathProtection()`, `checkShellPathViolation()` |
 | [`config.ts`](src/config.ts) | `loadConfig()`, `applyConfig()`, `DamageControlConfig` |
 | [`index.ts`](src/index.ts) | `DamageControl` plugin -- loads config at init, returns `tool.execute.before` + `permission.ask` hooks |
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, architecture, and PR conventions.
+
+For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 ---
 
