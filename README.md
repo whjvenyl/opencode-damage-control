@@ -9,6 +9,8 @@ Defense-in-depth security plugin for [OpenCode](https://opencode.ai). Blocks dan
 [![Built with OpenCode](https://img.shields.io/badge/Built_with-OpenCode-dc2626)](https://opencode.ai)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-dc2626)](package.json)
 
+**[Documentation](docs/)** · **[Issues](https://github.com/whjvenyl/opencode-damage-control/issues)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)**
+
 ---
 
 ## Why

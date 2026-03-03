@@ -18,7 +18,11 @@
 		"opencode-plugin",
 		"security",
 		"damage-control",
-		"guardrails"
+		"guardrails",
+		"ai-safety",
+		"code-safety",
+		"cli-security",
+		"prompt-injection"
 	],
 	"exports": {
 		".": {
