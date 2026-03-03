@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>damage-control promo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .card {
+    width: 1200px;
+    height: 675px;
+    background: #0a0a0a;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Subtle grid background */
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(220, 38, 38, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(220, 38, 38, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    z-index: 0;
+  }
+
+  /* Red glow top-left */
+  .glow-1 {
+    position: absolute;
+    top: -120px;
+    left: -120px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(220, 38, 38, 0.15) 0%, transparent 70%);
+    z-index: 0;
+  }
+
+  /* Subtle glow bottom-right */
+  .glow-2 {
+    position: absolute;
+    bottom: -80px;
+    right: -80px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(220, 38, 38, 0.08) 0%, transparent 70%);
+    z-index: 0;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    padding: 56px 64px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 40px;
+  }
+
+  .shield-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .shield-icon svg {
+    width: 42px;
+    height: 42px;
+  }
+
+  .tag {
+    font-size: 13px;
+    font-weight: 600;
+    color: #dc2626;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    background: rgba(220, 38, 38, 0.08);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    padding: 6px 16px;
+    border-radius: 4px;
+  }
+
+  .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 24px;
+  }
+
+  .title {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 52px;
+    line-height: 1.1;
+    color: #fafafa;
+    letter-spacing: -0.02em;
+  }
+
+  .title .accent {
+    color: #dc2626;
+  }
+
+  .terminal-block {
+    background: rgba(220, 38, 38, 0.04);
+    border: 1px solid rgba(220, 38, 38, 0.15);
+    border-radius: 8px;
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    max-width: 720px;
+  }
+
+  .terminal-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 17px;
+    font-weight: 500;
+  }
+
+  .prompt {
+    color: #525252;
+  }
+
+  .cmd {
+    color: #a3a3a3;
+  }
+
+  .blocked {
+    color: #dc2626;
+    font-weight: 700;
+  }
+
+  .allowed {
+    color: #22c55e;
+    font-weight: 700;
+  }
+
+  .x-icon { color: #dc2626; font-size: 15px; }
+  .check-icon { color: #22c55e; font-size: 15px; }
+
+  .bottom-bar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-top: auto;
+  }
+
+  .stats {
+    display: flex;
+    gap: 32px;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-number {
+    font-size: 28px;
+    font-weight: 800;
+    color: #fafafa;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #525252;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .install-cmd {
+    font-size: 14px;
+    color: #737373;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px 20px;
+    border-radius: 6px;
+  }
+
+  .install-cmd .dollar {
+    color: #404040;
+    margin-right: 8px;
+  }
+
+  .install-cmd .pkg {
+    color: #a3a3a3;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="glow-1"></div>
+  <div class="glow-2"></div>
+
+  <div class="content">
+    <div class="top-bar">
+      <div class="shield-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4" stroke="#dc2626" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="tag">OpenCode Plugin</div>
+    </div>
+
+    <div class="hero">
+      <div class="title">
+        <span class="accent">damage</span>-control
+      </div>
+
+      <div class="terminal-block">
+        <div class="terminal-line">
+          <span class="x-icon">&#x2717;</span>
+          <span class="prompt">agent$</span>
+          <span class="cmd">rm -rf /</span>
+          <span class="blocked">BLOCKED</span>
+        </div>
+        <div class="terminal-line">
+          <span class="x-icon">&#x2717;</span>
+          <span class="prompt">agent$</span>
+          <span class="cmd">bash -c "DROP TABLE users"</span>
+          <span class="blocked">BLOCKED</span>
+        </div>
+        <div class="terminal-line">
+          <span class="check-icon">&#x2713;</span>
+          <span class="prompt">agent$</span>
+          <span class="cmd">npm install express</span>
+          <span class="allowed">OK</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-number">122</div>
+          <div class="stat-label">Patterns</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number">103</div>
+          <div class="stat-label">Protected Paths</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number">0</div>
+          <div class="stat-label">Config Required</div>
+        </div>
+      </div>
+      <div class="install-cmd">
+        <span class="dollar">$</span>
+        <span class="pkg">npm i opencode-damage-control</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
