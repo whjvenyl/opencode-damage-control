@@ -39,6 +39,15 @@ export const DEFAULT_PATTERNS: Pattern[] = [
   { pattern: 'format\\s+[a-z]:', reason: 'Windows format', action: 'block' },
   { pattern: 'dd\\s+.*of=/dev/', reason: 'dd writing to device', action: 'block' },
 
+  // -- Windows destruction (block) --
+  { pattern: '\\bdel\\s+/s\\s+/q', reason: 'Windows recursive delete without confirmation', action: 'block' },
+  { pattern: '\\brd\\s+/s\\s+/q', reason: 'Windows remove directory tree silently', action: 'block' },
+  { pattern: '\\brmdir\\s+/s\\s+/q', reason: 'Windows remove directory tree silently', action: 'block' },
+  { pattern: '\\bdiskpart\\b', reason: 'Windows disk partitioning tool', action: 'block' },
+  { pattern: 'powershell.*Remove-Item.*-Recurse.*-Force', reason: 'PowerShell recursive force delete', action: 'block' },
+  { pattern: 'pwsh.*Remove-Item.*-Recurse.*-Force', reason: 'PowerShell recursive force delete', action: 'block' },
+  { pattern: '\\bRemove-Item\\b.*-Recurse.*-Force', reason: 'PowerShell recursive force delete', action: 'block' },
+
   // -- SQL (block catastrophic, ask targeted) --
   { pattern: 'DROP\\s+TABLE', reason: 'SQL DROP TABLE', action: 'block' },
   { pattern: 'DROP\\s+DATABASE', reason: 'SQL DROP DATABASE', action: 'block' },
@@ -82,6 +91,23 @@ export const DEFAULT_PATTERNS: Pattern[] = [
   { pattern: 'chmod\\s+(-[^\\s]+\\s+)*777', reason: 'chmod 777 (world writable)', action: 'ask' },
   { pattern: 'chmod\\s+-[Rr].*777', reason: 'Recursive chmod 777', action: 'ask' },
   { pattern: 'chown\\s+-[Rr]', reason: 'Recursive ownership change', action: 'ask' },
+
+  // -- Windows system operations (ask) --
+  { pattern: '\\breg\\s+delete', reason: 'Windows registry deletion', action: 'ask' },
+  { pattern: '\\bwmic\\s+.*delete', reason: 'WMIC destructive operation', action: 'ask' },
+  { pattern: '\\bnet\\s+stop\\b', reason: 'Stop Windows service', action: 'ask' },
+  { pattern: '\\bnet\\s+user\\s+.*\\/delete', reason: 'Delete Windows user account', action: 'ask' },
+  { pattern: '\\bsc\\s+delete\\b', reason: 'Delete Windows service', action: 'ask' },
+  { pattern: '\\bbcdedit\\b', reason: 'Windows boot configuration editing', action: 'ask' },
+  { pattern: '\\bicacls\\s+.*\\/grant\\s+.*Everyone', reason: 'Overly permissive Windows ACL (Everyone)', action: 'ask' },
+  { pattern: '\\btakeown\\b', reason: 'Take ownership of files', action: 'ask' },
+  { pattern: '\\bschtasks\\s+/delete', reason: 'Delete Windows scheduled task', action: 'ask' },
+  { pattern: 'powershell.*Stop-Service', reason: 'PowerShell Stop-Service', action: 'ask' },
+  { pattern: 'pwsh.*Stop-Service', reason: 'PowerShell Stop-Service', action: 'ask' },
+  { pattern: '\\bStop-Service\\b', reason: 'PowerShell Stop-Service', action: 'ask' },
+  { pattern: 'powershell.*Uninstall-Package', reason: 'PowerShell Uninstall-Package', action: 'ask' },
+  { pattern: 'pwsh.*Uninstall-Package', reason: 'PowerShell Uninstall-Package', action: 'ask' },
+  { pattern: '\\bUninstall-Package\\b', reason: 'PowerShell Uninstall-Package', action: 'ask' },
 
   // -- Process / system manipulation --
   { pattern: 'crontab\\s+-r', reason: 'crontab -r (deletes ALL cron jobs)', action: 'block' },
@@ -332,6 +358,9 @@ const WRAPPER_SHELLS = ['bash', 'sh', 'zsh', 'dash', 'ksh']
 /** Interpreters whose `-c` argument may contain shell commands embedded in API calls */
 const WRAPPER_INTERPRETERS = ['python', 'python3', 'ruby', 'perl', 'node']
 
+/** Windows shells with their own flag syntax */
+const WINDOWS_WRAPPERS = ['cmd', 'powershell', 'pwsh']
+
 /**
  * Match a `-c` flag followed by a quoted or unquoted argument.
  *
@@ -352,6 +381,18 @@ const C_FLAG_RE = /-c\s+(?:"([^"]+)"|'([^']+)'|(\S+))/g
 const ENV_PREFIX_RE = /\benv\s+(?:-\S+\s+)*(?=(?:bash|sh|zsh|dash|ksh|python|python3|ruby|perl|node)\b)/g
 
 /**
+ * Match `cmd /c` followed by a quoted or unquoted argument.
+ * Handles `cmd /c "del /s /q C:\"` and `cmd /c del /s /q`.
+ */
+const CMD_C_RE = /\bcmd(?:\.exe)?\s+\/c\s+(?:"([^"]+)"|'([^']+)'|(.+))/gi
+
+/**
+ * Match `powershell -Command` or `pwsh -Command` followed by an argument.
+ * Handles `powershell -Command "Remove-Item ..."` and `-c` shorthand.
+ */
+const PS_COMMAND_RE = /\b(?:powershell|pwsh)(?:\.exe)?\s+(?:-Command|-c)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/gi
+
+/**
  * Extract inner commands from shell wrapper invocations.
  *
  * Recursively unwraps nested wrappers (e.g. `bash -c "sh -c 'rm -rf /'"`)
@@ -365,13 +406,14 @@ export function unwrapShellCommand(command: string, depth = 0): string[] {
 
   const results: string[] = []
 
-  // Check if the command invokes any known wrapper shell/interpreter
-  const hasWrapper = [...WRAPPER_SHELLS, ...WRAPPER_INTERPRETERS].some(
-    (shell) => new RegExp(`\\b${shell}\\b`).test(normalised),
+  // Check if the command invokes any known wrapper shell/interpreter/Windows wrapper
+  const allWrappers = [...WRAPPER_SHELLS, ...WRAPPER_INTERPRETERS, ...WINDOWS_WRAPPERS]
+  const hasWrapper = allWrappers.some(
+    (shell) => new RegExp(`\\b${shell}(?:\\.exe)?\\b`, 'i').test(normalised),
   )
   if (!hasWrapper) return results
 
-  // Extract all -c arguments
+  // Extract all -c arguments (Unix shells/interpreters)
   const re = new RegExp(C_FLAG_RE.source, 'g')
   for (const m of normalised.matchAll(re)) {
     const inner = m[1] ?? m[2] ?? m[3]
@@ -381,7 +423,26 @@ export function unwrapShellCommand(command: string, depth = 0): string[] {
     results.push(...unwrapShellCommand(inner, depth + 1))
   }
 
-  return results
+  // Extract cmd /c arguments
+  const cmdRe = new RegExp(CMD_C_RE.source, 'gi')
+  for (const m of normalised.matchAll(cmdRe)) {
+    const inner = m[1] ?? m[2] ?? m[3]
+    if (!inner) continue
+    results.push(inner.trim())
+    results.push(...unwrapShellCommand(inner.trim(), depth + 1))
+  }
+
+  // Extract powershell/pwsh -Command arguments
+  const psRe = new RegExp(PS_COMMAND_RE.source, 'gi')
+  for (const m of normalised.matchAll(psRe)) {
+    const inner = m[1] ?? m[2] ?? m[3]
+    if (!inner) continue
+    results.push(inner.trim())
+    results.push(...unwrapShellCommand(inner.trim(), depth + 1))
+  }
+
+  // Deduplicate results (pwsh -c matches both C_FLAG_RE and PS_COMMAND_RE)
+  return [...new Set(results)]
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +554,14 @@ const SHELL_WRITE_OPS = [
   /\becho\s+.*(?:>|>>)\s*/,                              // echo ... > file
   /\bprintf\s+.*(?:>|>>)\s*/,                            // printf ... > file
   /\bcat\s+.*(?:>|>>)\s*/,                               // cat ... > file (writing, not reading)
+  // Windows write operations
+  /\bcopy\s+/i,                                           // copy (Windows)
+  /\bxcopy\s+/i,                                          // xcopy (Windows)
+  /\brobocopy\s+/i,                                       // robocopy (Windows)
+  /\bmove\s+/i,                                            // move (Windows)
+  /\bren\s+/i,                                             // ren (Windows rename)
+  /\bicacls\s+/i,                                          // icacls (Windows ACL)
+  /\battrib\s+/i,                                          // attrib (Windows attributes)
 ]
 
 /** Patterns that indicate a shell command deletes files */
@@ -501,6 +570,10 @@ const SHELL_DELETE_OPS = [
   /\bunlink\s+/,                                         // unlink
   /\brmdir\s+/,                                          // rmdir
   /\bshred\s+/,                                          // shred (secure delete)
+  // Windows delete operations
+  /\bdel\s+/i,                                            // del (Windows)
+  /\brd\s+/i,                                             // rd (Windows)
+  /\berase\s+/i,                                          // erase (Windows)
 ]
 
 /**

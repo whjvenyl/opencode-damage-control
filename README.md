@@ -44,11 +44,11 @@ Restart OpenCode. Done -- all protections are active with zero configuration.
 
 ## What It Protects
 
-### 122 Command Patterns
+### 144 Command Patterns
 
-**49 hard-blocked**, **73 require confirmation**. Covers system destruction (`rm -rf /`, fork bombs, `dd`), SQL (`DROP TABLE`, `DELETE FROM`, `TRUNCATE`), git (`--force` push, `filter-branch`, `stash clear`), cloud infrastructure (AWS, GCP, Azure, Terraform, Pulumi), Docker/Kubernetes, databases (Redis, Postgres, MySQL, MongoDB), hosting platforms (Vercel, Netlify, Heroku, Fly.io, Cloudflare, Firebase, Serverless), and process/system manipulation (`crontab -r`, `systemctl`, `iptables`, `launchctl`).
+**56 hard-blocked**, **88 require confirmation**. Covers system destruction (`rm -rf /`, fork bombs, `dd`), SQL (`DROP TABLE`, `DELETE FROM`, `TRUNCATE`), git (`--force` push, `filter-branch`, `stash clear`), cloud infrastructure (AWS, GCP, Azure, Terraform, Pulumi), Docker/Kubernetes, databases (Redis, Postgres, MySQL, MongoDB), hosting platforms (Vercel, Netlify, Heroku, Fly.io, Cloudflare, Firebase, Serverless), process/system manipulation (`crontab -r`, `systemctl`, `iptables`, `launchctl`), and Windows-specific commands (`del /s /q`, `rd /s /q`, `diskpart`, `reg delete`, `bcdedit`, PowerShell `Remove-Item`, `Stop-Service`, `Uninstall-Package`).
 
-**Shell wrapper unwrapping:** Commands wrapped in `bash -c "..."`, `sh -c "..."`, `python -c "..."`, `env bash -c "..."`, etc. are automatically unwrapped and inspected. Nested wrappers are handled recursively.
+**Shell wrapper unwrapping:** Commands wrapped in `bash -c "..."`, `sh -c "..."`, `python -c "..."`, `cmd /c "..."`, `powershell -Command "..."`, `pwsh -c "..."`, `env bash -c "..."`, etc. are automatically unwrapped and inspected. Nested wrappers are handled recursively.
 
 [Full pattern list &rarr;](docs/patterns.md)
 
@@ -230,17 +230,17 @@ git clone https://github.com/whjvenyl/opencode-damage-control.git
 cd opencode-damage-control
 npm install
 npm run build    # output in dist/
-npm test         # 415 tests
+npm test         # 454 tests
 ```
 
 ### Architecture
 
 ```
 src/
-  patterns.ts        122 patterns, 103 paths, shell unwrapping, matching helpers
+  patterns.ts        144 patterns, 103 paths, shell unwrapping, matching helpers
   config.ts          Config loading, validation, merging
   index.ts           Plugin entry point (2 hooks)
-  patterns.test.ts   389 pattern + unwrapping tests
+  patterns.test.ts   428 pattern + unwrapping tests
   config.test.ts     26 config tests
 ```
 

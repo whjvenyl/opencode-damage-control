@@ -75,6 +75,13 @@ describe('matchPattern', () => {
       ['systemctl mask nginx', 'systemctl mask (prevents service from starting)'],
       ['iptables -F', 'iptables -F (flushes all firewall rules)'],
       ['iptables -X', 'iptables -X (deletes all user chains)'],
+      // Windows destruction (block)
+      ['del /s /q C:\\Windows', 'Windows recursive delete without confirmation'],
+      ['rd /s /q C:\\temp', 'Windows remove directory tree silently'],
+      ['rmdir /s /q C:\\Users\\test', 'Windows remove directory tree silently'],
+      ['diskpart', 'Windows disk partitioning tool'],
+      ['powershell Remove-Item -Recurse -Force C:\\temp', 'PowerShell recursive force delete'],
+      ['pwsh Remove-Item -Path C:\\temp -Recurse -Force', 'PowerShell recursive force delete'],
     ]
 
     for (const [command, expectedReason] of blockCases) {
@@ -168,6 +175,20 @@ describe('matchPattern', () => {
       ['visudo', 'visudo (modifies sudoers file)'],
       ['ufw disable', 'ufw disable (disables firewall)'],
       ['setenforce 0', 'setenforce 0 (disables SELinux)'],
+      // Windows system operations (ask)
+      ['reg delete HKLM\\Software\\MyApp', 'Windows registry deletion'],
+      ['wmic process where name="notepad.exe" delete', 'WMIC destructive operation'],
+      ['net stop MySQL', 'Stop Windows service'],
+      ['net user JohnDoe /delete', 'Delete Windows user account'],
+      ['sc delete MyService', 'Delete Windows service'],
+      ['bcdedit /set safeboot minimal', 'Windows boot configuration editing'],
+      ['icacls C:\\shared /grant Everyone:F', 'Overly permissive Windows ACL (Everyone)'],
+      ['takeown /f C:\\Windows\\System32\\file.dll', 'Take ownership of files'],
+      ['schtasks /delete /tn "MyTask"', 'Delete Windows scheduled task'],
+      ['powershell Stop-Service -Name MySQL', 'PowerShell Stop-Service'],
+      ['pwsh Stop-Service -Name IIS', 'PowerShell Stop-Service'],
+      ['powershell Uninstall-Package -Name SomePackage', 'PowerShell Uninstall-Package'],
+      ['pwsh Uninstall-Package -Name SomePackage', 'PowerShell Uninstall-Package'],
     ]
 
     for (const [command, expectedReason] of askCases) {
@@ -211,6 +232,15 @@ describe('matchPattern', () => {
       'sysctl -a',
       'ufw status',
       'iptables -L',
+      // Safe Windows commands
+      'dir C:\\Users',
+      'type file.txt',
+      'net use',
+      'net view',
+      'sc query MyService',
+      'schtasks /query',
+      'reg query HKLM\\Software',
+      'icacls C:\\folder',
     ]
 
     for (const command of safeCases) {
@@ -843,6 +873,17 @@ describe('unwrapShellCommand', () => {
 
       // Unquoted argument
       ['bash -c ls', ['ls']],
+
+      // Windows: cmd /c
+      ['cmd /c "del /s /q C:\\temp"', ['del /s /q C:\\temp']],
+      ['cmd /c del /s /q', ['del /s /q']],
+      ['cmd.exe /c "rd /s /q C:\\temp"', ['rd /s /q C:\\temp']],
+
+      // Windows: powershell -Command
+      ['powershell -Command "Remove-Item -Recurse -Force C:\\temp"', ['Remove-Item -Recurse -Force C:\\temp']],
+      ['pwsh -Command "Stop-Service -Name MySQL"', ['Stop-Service -Name MySQL']],
+      ['powershell.exe -Command "Get-Process"', ['Get-Process']],
+      ['pwsh -c "Remove-Item -Recurse -Force C:\\temp"', ['Remove-Item -Recurse -Force C:\\temp']],
     ]
 
     for (const [command, expected] of cases) {
@@ -900,6 +941,10 @@ describe('shell wrapper bypass detection', () => {
       ['bash -c "kill -9 -1"', 'Kill all processes'],
       ['sh -c "crontab -r"', 'crontab -r (deletes ALL cron jobs)'],
       ['bash -c "iptables -F"', 'iptables -F (flushes all firewall rules)'],
+      // Windows wrapper bypass
+      ['cmd /c "del /s /q C:\\Windows"', 'Windows recursive delete without confirmation'],
+      ['cmd /c "diskpart"', 'Windows disk partitioning tool'],
+      ['powershell -Command "Remove-Item -Recurse -Force C:\\temp"', 'PowerShell recursive force delete'],
     ]
 
     for (const [command, expectedReason] of cases) {
@@ -927,6 +972,9 @@ describe('shell wrapper bypass detection', () => {
       ['env bash -c "docker volume rm myvol"', 'docker volume rm (data loss)'],
       ['zsh -c "systemctl disable nginx"', 'systemctl disable (disables system service)'],
       ['bash -c "ufw disable"', 'ufw disable (disables firewall)'],
+      // Windows wrapper bypass (ask)
+      ['cmd /c "reg delete HKLM\\Software\\MyApp"', 'Windows registry deletion'],
+      ['powershell -Command "Stop-Service -Name MySQL"', 'PowerShell Stop-Service'],
     ]
 
     for (const [command, expectedReason] of cases) {
@@ -952,8 +1000,8 @@ describe('shell wrapper bypass detection', () => {
 // ---------------------------------------------------------------------------
 
 describe('DEFAULT_PATTERNS', () => {
-  it('should have at least 120 patterns', () => {
-    assert.ok(DEFAULT_PATTERNS.length >= 120, `Only ${DEFAULT_PATTERNS.length} patterns`)
+  it('should have at least 140 patterns', () => {
+    assert.ok(DEFAULT_PATTERNS.length >= 140, `Only ${DEFAULT_PATTERNS.length} patterns`)
   })
 
   it('should have only valid actions', () => {

@@ -2,9 +2,9 @@
 
 [Back to README](../README.md)
 
-**122 patterns** -- 49 hard-blocked, 73 require confirmation.
+**144 patterns** -- 56 hard-blocked, 88 require confirmation.
 
-Shell wrapper unwrapping: commands wrapped in `bash -c "..."`, `sh -c "..."`, `python -c "..."`, etc. are automatically unwrapped and inspected.
+Shell wrapper unwrapping: commands wrapped in `bash -c "..."`, `sh -c "..."`, `python -c "..."`, `cmd /c "..."`, `powershell -Command "..."`, `pwsh -c "..."`, etc. are automatically unwrapped and inspected.
 
 Each pattern has an **action**:
 
@@ -34,6 +34,15 @@ These are hard-blocked. The tool never executes.
 | `shutdown` / `reboot` / `init 0` | System shutdown/reboot/halt |
 | `format c:` | Windows format |
 | `sudo rm` | sudo rm |
+
+### Windows Destruction
+
+| Pattern | Description |
+|---------|-------------|
+| `del /s /q` | Recursive delete without confirmation |
+| `rd /s /q` / `rmdir /s /q` | Remove directory tree silently |
+| `diskpart` | Disk partitioning tool |
+| `Remove-Item -Recurse -Force` | PowerShell recursive force delete (with or without `powershell`/`pwsh` prefix) |
 
 ### SQL (no WHERE clause)
 
@@ -157,6 +166,22 @@ These prompt the user for confirmation. The user can approve once, approve alway
 | `visudo` | Modifies sudoers file |
 | `ufw disable` | Disables firewall |
 | `setenforce 0` | Disables SELinux |
+
+### Windows System Operations
+
+| Pattern | Description |
+|---------|-------------|
+| `reg delete` | Windows registry deletion |
+| `wmic ... delete` | WMIC destructive operation |
+| `net stop` | Stop Windows service |
+| `net user ... /delete` | Delete Windows user account |
+| `sc delete` | Delete Windows service |
+| `bcdedit` | Boot configuration editing |
+| `icacls ... /grant Everyone` | Overly permissive ACL (Everyone) |
+| `takeown` | Take ownership of files |
+| `schtasks /delete` | Delete scheduled task |
+| `Stop-Service` | PowerShell Stop-Service (with or without `powershell`/`pwsh` prefix) |
+| `Uninstall-Package` | PowerShell Uninstall-Package (with or without prefix) |
 
 ### Cloud / Infrastructure
 
