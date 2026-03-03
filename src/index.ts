@@ -5,6 +5,7 @@ import {
   matchPattern,
   checkPathProtection,
   checkShellPathViolation,
+  unwrapShellCommand,
 } from "./patterns.js"
 import { loadConfig, applyConfig } from "./config.js"
 
@@ -81,65 +82,79 @@ export const DamageControl: Plugin = async ({ client, directory }) => {
         const command = args.command as string
         if (!command) return
 
-        // 1. Check dangerous command patterns
-        const result = matchPattern(command, patterns)
-        if (result) {
-          const { match, pattern } = result
+        // Unwrap shell wrappers (e.g. bash -c "rm -rf /") to inspect
+        // the inner commands. The original command is checked first.
+        const commandsToCheck = [command, ...unwrapShellCommand(command)]
 
-          if (pattern.action === 'block') {
+        // 1. Check dangerous command patterns
+        for (const cmd of commandsToCheck) {
+          const result = matchPattern(cmd, patterns)
+          if (result) {
+            const { match, pattern } = result
+
+            if (pattern.action === 'block') {
+              await client.app.log({
+                body: {
+                  service: 'damage-control',
+                  level: 'warn',
+                  message: cmd === command
+                    ? 'Blocked dangerous command'
+                    : 'Blocked dangerous command (unwrapped from shell wrapper)',
+                  extra: { command: command.slice(0, 100), reason: pattern.reason },
+                },
+              })
+              throw new Error(
+                `DAMAGE_CONTROL_BLOCKED: ${pattern.reason}\n\n` +
+                `Command: ${match}`
+              )
+            }
+
+            // action === 'ask' -- stash for permission.ask hook
             await client.app.log({
               body: {
                 service: 'damage-control',
                 level: 'warn',
-                message: 'Blocked dangerous command',
+                message: cmd === command
+                  ? 'Flagged command for confirmation'
+                  : 'Flagged command for confirmation (unwrapped from shell wrapper)',
                 extra: { command: command.slice(0, 100), reason: pattern.reason },
               },
             })
-            throw new Error(
-              `DAMAGE_CONTROL_BLOCKED: ${pattern.reason}\n\n` +
-              `Command: ${match}`
-            )
+            pendingAsks.set(input.callID, {
+              reason: pattern.reason,
+              match,
+              tool,
+            })
+            return // proceed to permission system
           }
-
-          // action === 'ask' -- stash for permission.ask hook
-          await client.app.log({
-            body: {
-              service: 'damage-control',
-              level: 'warn',
-              message: 'Flagged command for confirmation',
-              extra: { command: command.slice(0, 100), reason: pattern.reason },
-            },
-          })
-          pendingAsks.set(input.callID, {
-            reason: pattern.reason,
-            match,
-            tool,
-          })
-          return // proceed to permission system
         }
 
         // 2. Check three-tier path protection for shell commands
         //    zeroAccess: block if path appears in command at all
         //    readOnly:   block only writes/deletes (cat ~/.bashrc is fine)
         //    noDelete:   block only deletes (echo >> .gitignore is fine)
-        const violation = checkShellPathViolation(command, paths)
-        if (violation) {
-          const { protectedPath: prot, operation } = violation
-          const verb = operation === 'access' ? 'access'
-            : operation === 'write' ? 'write to'
-            : 'delete'
-          await client.app.log({
-            body: {
-              service: 'damage-control',
-              level: 'warn',
-              message: `Blocked ${operation} on protected path in command`,
-              extra: { command: command.slice(0, 100), path: prot.path, level: prot.level },
-            },
-          })
-          throw new Error(
-            `DAMAGE_CONTROL_BLOCKED: Cannot ${verb} protected path "${prot.path}"\n` +
-            `Protection level: ${prot.level}`
-          )
+        for (const cmd of commandsToCheck) {
+          const violation = checkShellPathViolation(cmd, paths)
+          if (violation) {
+            const { protectedPath: prot, operation } = violation
+            const verb = operation === 'access' ? 'access'
+              : operation === 'write' ? 'write to'
+              : 'delete'
+            await client.app.log({
+              body: {
+                service: 'damage-control',
+                level: 'warn',
+                message: cmd === command
+                  ? `Blocked ${operation} on protected path in command`
+                  : `Blocked ${operation} on protected path (unwrapped from shell wrapper)`,
+                extra: { command: command.slice(0, 100), path: prot.path, level: prot.level },
+              },
+            })
+            throw new Error(
+              `DAMAGE_CONTROL_BLOCKED: Cannot ${verb} protected path "${prot.path}"\n` +
+              `Protection level: ${prot.level}`
+            )
+          }
         }
       }
 

@@ -83,6 +83,24 @@ export const DEFAULT_PATTERNS: Pattern[] = [
   { pattern: 'chmod\\s+-[Rr].*777', reason: 'Recursive chmod 777', action: 'ask' },
   { pattern: 'chown\\s+-[Rr]', reason: 'Recursive ownership change', action: 'ask' },
 
+  // -- Process / system manipulation --
+  { pattern: 'crontab\\s+-r', reason: 'crontab -r (deletes ALL cron jobs)', action: 'block' },
+  { pattern: 'crontab\\s+-l\\s*\\|', reason: 'Piping crontab output (potential overwrite)', action: 'ask' },
+  { pattern: 'systemctl\\s+disable', reason: 'systemctl disable (disables system service)', action: 'ask' },
+  { pattern: 'systemctl\\s+stop', reason: 'systemctl stop (stops system service)', action: 'ask' },
+  { pattern: 'systemctl\\s+mask', reason: 'systemctl mask (prevents service from starting)', action: 'block' },
+  { pattern: 'launchctl\\s+unload', reason: 'launchctl unload (unloads macOS service)', action: 'ask' },
+  { pattern: 'launchctl\\s+bootout', reason: 'launchctl bootout (removes macOS service)', action: 'ask' },
+  { pattern: 'launchctl\\s+remove', reason: 'launchctl remove (removes macOS service)', action: 'ask' },
+  { pattern: 'sysctl\\s+-w', reason: 'sysctl -w (modifies kernel parameter)', action: 'ask' },
+  { pattern: 'update-rc\\.d\\s+\\S+\\s+disable', reason: 'update-rc.d disable (disables init service)', action: 'ask' },
+  { pattern: 'update-rc\\.d\\s+\\S+\\s+remove', reason: 'update-rc.d remove (removes init service)', action: 'ask' },
+  { pattern: 'visudo', reason: 'visudo (modifies sudoers file)', action: 'ask' },
+  { pattern: 'iptables\\s+-F', reason: 'iptables -F (flushes all firewall rules)', action: 'block' },
+  { pattern: 'iptables\\s+-X', reason: 'iptables -X (deletes all user chains)', action: 'block' },
+  { pattern: 'ufw\\s+disable', reason: 'ufw disable (disables firewall)', action: 'ask' },
+  { pattern: 'setenforce\\s+0', reason: 'setenforce 0 (disables SELinux)', action: 'ask' },
+
   // -- Cloud / Infrastructure --
   { pattern: 'terraform\\s+destroy', reason: 'terraform destroy', action: 'block' },
   { pattern: 'pulumi\\s+destroy', reason: 'pulumi destroy', action: 'block' },
@@ -298,6 +316,73 @@ export const DEFAULT_PROTECTED_PATHS: ProtectedPath[] = [
   { path: 'docker-compose*.yml', level: 'noDelete' },
   { path: '.dockerignore', level: 'noDelete' },
 ]
+
+// ---------------------------------------------------------------------------
+// Shell wrapper unwrapping
+// ---------------------------------------------------------------------------
+// Detects commands wrapped inside shell invocations like `bash -c "rm -rf /"`,
+// `python -c "import os; os.system('rm -rf /')"`, or `env sh -c "..."`.
+// Returns all extracted inner command strings so they can be pattern-matched
+// independently. Returns an empty array if no wrapper is detected.
+// ---------------------------------------------------------------------------
+
+/** Shells whose `-c` argument contains a shell command to inspect */
+const WRAPPER_SHELLS = ['bash', 'sh', 'zsh', 'dash', 'ksh']
+
+/** Interpreters whose `-c` argument may contain shell commands embedded in API calls */
+const WRAPPER_INTERPRETERS = ['python', 'python3', 'ruby', 'perl', 'node']
+
+/**
+ * Match a `-c` flag followed by a quoted or unquoted argument.
+ *
+ * Captures:
+ *   group 1 = double-quoted content
+ *   group 2 = single-quoted content
+ *   group 3 = unquoted content (up to next shell metachar or EOL)
+ *
+ * The regex is applied with `g` flag to capture multiple `-c` invocations
+ * in a single command (e.g. chained with `&&`).
+ */
+const C_FLAG_RE = /-c\s+(?:"([^"]+)"|'([^']+)'|(\S+))/g
+
+/**
+ * Regex to detect `env` prefix stripping — `env [-flags] <shell> -c ...`
+ * We normalise `env bash -c "..."` to `bash -c "..."` before extraction.
+ */
+const ENV_PREFIX_RE = /\benv\s+(?:-\S+\s+)*(?=(?:bash|sh|zsh|dash|ksh|python|python3|ruby|perl|node)\b)/g
+
+/**
+ * Extract inner commands from shell wrapper invocations.
+ *
+ * Recursively unwraps nested wrappers (e.g. `bash -c "sh -c 'rm -rf /'"`)
+ * up to a depth limit to prevent pathological inputs.
+ */
+export function unwrapShellCommand(command: string, depth = 0): string[] {
+  if (depth > 5) return [] // guard against pathological nesting
+
+  // Normalise `env bash -c` → `bash -c`
+  const normalised = command.replace(ENV_PREFIX_RE, '')
+
+  const results: string[] = []
+
+  // Check if the command invokes any known wrapper shell/interpreter
+  const hasWrapper = [...WRAPPER_SHELLS, ...WRAPPER_INTERPRETERS].some(
+    (shell) => new RegExp(`\\b${shell}\\b`).test(normalised),
+  )
+  if (!hasWrapper) return results
+
+  // Extract all -c arguments
+  const re = new RegExp(C_FLAG_RE.source, 'g')
+  for (const m of normalised.matchAll(re)) {
+    const inner = m[1] ?? m[2] ?? m[3]
+    if (!inner) continue
+    results.push(inner)
+    // Recurse to catch nested wrappers
+    results.push(...unwrapShellCommand(inner, depth + 1))
+  }
+
+  return results
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

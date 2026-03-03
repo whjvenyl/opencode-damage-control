@@ -2,7 +2,9 @@
 
 [Back to README](../README.md)
 
-**108 patterns** -- 46 hard-blocked, 62 require confirmation.
+**122 patterns** -- 49 hard-blocked, 73 require confirmation.
+
+Shell wrapper unwrapping: commands wrapped in `bash -c "..."`, `sh -c "..."`, `python -c "..."`, etc. are automatically unwrapped and inspected.
 
 Each pattern has an **action**:
 
@@ -93,6 +95,15 @@ These are hard-blocked. The tool never executes.
 | `npm unpublish` | Removes package from registry |
 | `gh repo delete` | Deletes GitHub repository |
 
+### Process / System Manipulation
+
+| Pattern | Description |
+|---------|-------------|
+| `crontab -r` | Deletes ALL cron jobs |
+| `systemctl mask` | Prevents service from starting |
+| `iptables -F` | Flushes all firewall rules |
+| `iptables -X` | Deletes all user-defined chains |
+
 ---
 
 ## Confirmed Patterns (action: ask)
@@ -132,6 +143,20 @@ These prompt the user for confirmation. The user can approve once, approve alway
 |---------|-------------|
 | `chmod 777` / `chmod -R 777` | World-writable permissions |
 | `chown -R` | Recursive ownership change |
+
+### Process / System Manipulation
+
+| Pattern | Description |
+|---------|-------------|
+| `crontab -l \| ...` | Piping crontab output (potential overwrite) |
+| `systemctl disable` | Disables system service |
+| `systemctl stop` | Stops system service |
+| `launchctl unload` / `bootout` / `remove` | Unloads/removes macOS service |
+| `sysctl -w` | Modifies kernel parameter |
+| `update-rc.d ... disable` / `remove` | Disables/removes init service |
+| `visudo` | Modifies sudoers file |
+| `ufw disable` | Disables firewall |
+| `setenforce 0` | Disables SELinux |
 
 ### Cloud / Infrastructure
 

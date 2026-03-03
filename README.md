@@ -44,9 +44,11 @@ Restart OpenCode. Done -- all protections are active with zero configuration.
 
 ## What It Protects
 
-### 108 Command Patterns
+### 122 Command Patterns
 
-**46 hard-blocked**, **62 require confirmation**. Covers system destruction (`rm -rf /`, fork bombs, `dd`), SQL (`DROP TABLE`, `DELETE FROM`, `TRUNCATE`), git (`--force` push, `filter-branch`, `stash clear`), cloud infrastructure (AWS, GCP, Azure, Terraform, Pulumi), Docker/Kubernetes, databases (Redis, Postgres, MySQL, MongoDB), and hosting platforms (Vercel, Netlify, Heroku, Fly.io, Cloudflare, Firebase, Serverless).
+**49 hard-blocked**, **73 require confirmation**. Covers system destruction (`rm -rf /`, fork bombs, `dd`), SQL (`DROP TABLE`, `DELETE FROM`, `TRUNCATE`), git (`--force` push, `filter-branch`, `stash clear`), cloud infrastructure (AWS, GCP, Azure, Terraform, Pulumi), Docker/Kubernetes, databases (Redis, Postgres, MySQL, MongoDB), hosting platforms (Vercel, Netlify, Heroku, Fly.io, Cloudflare, Firebase, Serverless), and process/system manipulation (`crontab -r`, `systemctl`, `iptables`, `launchctl`).
+
+**Shell wrapper unwrapping:** Commands wrapped in `bash -c "..."`, `sh -c "..."`, `python -c "..."`, `env bash -c "..."`, etc. are automatically unwrapped and inspected. Nested wrappers are handled recursively.
 
 [Full pattern list &rarr;](docs/patterns.md)
 
@@ -81,7 +83,8 @@ flowchart TD
     CALL --> READ["read / glob / grep"]
     CALL --> WRITE["edit / write / create"]
 
-    EXEC --> PP["Pattern + Path Check"]
+    EXEC --> UNWRAP["Unwrap Shell Wrappers"]
+    UNWRAP --> PP["Pattern + Path Check"]
     READ --> PC1["Path Check"]
     WRITE --> PC2["Path Check"]
 
@@ -214,7 +217,7 @@ damage-control flagged: git reset --hard
 ## Limitations
 
 - **Substring matching for paths.** A command that merely _mentions_ a protected path (e.g., in a comment) will be blocked.
-- **Shell only, not subprocesses.** Inspects command strings passed to `bash`/`shell`/`cmd`. Cannot inspect commands spawned by scripts.
+- **Shell only, not subprocesses.** Inspects command strings passed to `bash`/`shell`/`cmd`. Cannot inspect commands spawned by scripts (but does unwrap `bash -c`, `python -c`, etc.).
 - **Pattern ordering matters.** First match wins. Specific patterns are ordered before generic ones.
 - **Ask requires permission system.** The `permission.ask` hook forces the dialog even if the user's config auto-allows, but exact UX depends on OpenCode version.
 
@@ -227,23 +230,23 @@ git clone https://github.com/whjvenyl/opencode-damage-control.git
 cd opencode-damage-control
 npm install
 npm run build    # output in dist/
-npm test         # 352 tests
+npm test         # 415 tests
 ```
 
 ### Architecture
 
 ```
 src/
-  patterns.ts        108 patterns, 103 paths, matching helpers
+  patterns.ts        122 patterns, 103 paths, shell unwrapping, matching helpers
   config.ts          Config loading, validation, merging
   index.ts           Plugin entry point (2 hooks)
-  patterns.test.ts   326 pattern tests
+  patterns.test.ts   389 pattern + unwrapping tests
   config.test.ts     26 config tests
 ```
 
 | Module | Exports |
 |--------|---------|
-| [`patterns.ts`](src/patterns.ts) | `DEFAULT_PATTERNS`, `DEFAULT_PROTECTED_PATHS`, `matchPattern()`, `checkPathProtection()`, `checkShellPathViolation()` |
+| [`patterns.ts`](src/patterns.ts) | `DEFAULT_PATTERNS`, `DEFAULT_PROTECTED_PATHS`, `matchPattern()`, `checkPathProtection()`, `checkShellPathViolation()`, `unwrapShellCommand()` |
 | [`config.ts`](src/config.ts) | `loadConfig()`, `applyConfig()`, `DamageControlConfig` |
 | [`index.ts`](src/index.ts) | `DamageControl` plugin -- loads config at init, returns `tool.execute.before` + `permission.ask` hooks |
 
