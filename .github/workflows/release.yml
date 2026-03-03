@@ -58,8 +58,14 @@ jobs:
           BODY=$(gh api repos/${{ github.repository }}/releases \
             --jq '[.[] | select(.draft == true)] | first | .body // ""')
 
-          # Write to file for the next step
-          echo "$BODY" > RELEASE_NOTES.md
+          # Treat Release Drafter's empty placeholder as no content
+          STRIPPED=$(echo "$BODY" | sed '/^$/d; /^## What'\''s Changed$/d; /^\* No changes$/d' | tr -d '[:space:]')
+          if [ -n "$STRIPPED" ]; then
+            echo "source=drafter" >> "$GITHUB_OUTPUT"
+            echo "$BODY" > RELEASE_NOTES.md
+          else
+            echo "source=generated" >> "$GITHUB_OUTPUT"
+          fi
 
           # Also get the draft release ID so we can delete it after
           DRAFT_ID=$(gh api repos/${{ github.repository }}/releases \
@@ -70,9 +76,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
-            --notes-file RELEASE_NOTES.md
+          if [ "${{ steps.notes.outputs.source }}" = "drafter" ]; then
+            gh release create "${{ github.ref_name }}" \
+              --title "${{ github.ref_name }}" \
+              --notes-file RELEASE_NOTES.md
+          else
+            gh release create "${{ github.ref_name }}" \
+              --title "${{ github.ref_name }}" \
+              --generate-notes
+          fi
 
       - name: Delete draft release
         if: steps.notes.outputs.draft_id != ''
